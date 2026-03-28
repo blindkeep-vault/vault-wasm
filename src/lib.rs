@@ -30,7 +30,7 @@ pub fn derive_subkey(master_key: &[u8], info: &str) -> Result<Vec<u8>, JsError> 
 #[wasm_bindgen]
 pub fn generate_keypair() -> Result<JsValue, JsError> {
     use x25519_dalek::{PublicKey, StaticSecret};
-    let secret = StaticSecret::random_from_rng(rand::thread_rng());
+    let secret = StaticSecret::random_from_rng(rand::rngs::OsRng);
     let public = PublicKey::from(&secret);
     let result = serde_json::json!({
         "private_key": secret.to_bytes().to_vec(),
@@ -93,7 +93,7 @@ pub fn unwrap_key(
 pub fn generate_random_key() -> Vec<u8> {
     use rand::RngCore;
     let mut key = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut key);
+    rand::rngs::OsRng.fill_bytes(&mut key);
     key.to_vec()
 }
 
