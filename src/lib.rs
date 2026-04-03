@@ -297,8 +297,8 @@ pub fn derive_api_key_keys(secret: &[u8]) -> Result<JsValue, JsError> {
     }
     let mut s = [0u8; 32];
     s.copy_from_slice(secret);
-    let (wrapping_key, auth_key) = vault_core::crypto::derive_api_key_keys(&s)
-        .map_err(|e| JsError::new(&e.to_string()))?;
+    let (wrapping_key, auth_key) =
+        vault_core::crypto::derive_api_key_keys(&s).map_err(|e| JsError::new(&e.to_string()))?;
     let result = serde_json::json!({
         "wrapping_key": wrapping_key.to_vec(),
         "auth_key": auth_key.to_vec(),
@@ -321,6 +321,5 @@ pub fn wrap_key_symmetric(wrapping_key: &[u8], key_to_wrap: &[u8]) -> Result<Vec
     let mut ktw = [0u8; 32];
     ktw.copy_from_slice(key_to_wrap);
     let mk = vault_core::crypto::MasterKey::from_bytes(ktw);
-    vault_core::crypto::wrap_master_key(&wk, &mk)
-        .map_err(|e| JsError::new(&e.to_string()))
+    vault_core::crypto::wrap_master_key(&wk, &mk).map_err(|e| JsError::new(&e.to_string()))
 }
