@@ -254,6 +254,7 @@ pub fn sha256(data: &[u8]) -> Vec<u8> {
 pub fn verify_notarization(
     pubkey: &[u8],
     content_hash: &[u8],
+    blob_hash: &[u8],
     timestamp_millis: i64,
     tree_root: &[u8],
     signature: &[u8],
@@ -263,6 +264,9 @@ pub fn verify_notarization(
     }
     if content_hash.len() != 32 {
         return Err(JsError::new("content_hash must be 32 bytes"));
+    }
+    if !blob_hash.is_empty() && blob_hash.len() != 32 {
+        return Err(JsError::new("blob_hash must be empty or 32 bytes"));
     }
     if tree_root.len() != 32 {
         return Err(JsError::new("tree_root must be 32 bytes"));
@@ -274,6 +278,13 @@ pub fn verify_notarization(
     pk.copy_from_slice(pubkey);
     let mut ch = [0u8; 32];
     ch.copy_from_slice(content_hash);
+    let bh = if blob_hash.len() == 32 {
+        let mut b = [0u8; 32];
+        b.copy_from_slice(blob_hash);
+        Some(b)
+    } else {
+        None
+    };
     let mut tr = [0u8; 32];
     tr.copy_from_slice(tree_root);
     let mut sig = [0u8; 64];
@@ -282,6 +293,7 @@ pub fn verify_notarization(
     Ok(vault_core::crypto::verify_notarization_signature(
         &pk,
         &ch,
+        bh.as_ref(),
         timestamp_millis,
         &tr,
         &sig,
