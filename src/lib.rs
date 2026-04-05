@@ -220,6 +220,77 @@ pub fn unwrap_key_v1(
     Ok(key.to_vec())
 }
 
+/// Wrap an item key for a grant recipient (V1 key-bound).
+/// Returns {grant_wrapped_key: nonce||ciphertext, ephemeral_pubkey: 32 bytes}.
+#[wasm_bindgen]
+pub fn wrap_key_for_grant(item_key: &[u8], recipient_pubkey: &[u8]) -> Result<JsValue, JsError> {
+    if item_key.len() != 32 {
+        return Err(JsError::new("item key must be 32 bytes"));
+    }
+    if recipient_pubkey.len() != 32 {
+        return Err(JsError::new("recipient public key must be 32 bytes"));
+    }
+    let mut ik = [0u8; 32];
+    ik.copy_from_slice(item_key);
+    let mut pk = [0u8; 32];
+    pk.copy_from_slice(recipient_pubkey);
+
+    let (grant_wrapped_key, ephemeral_pubkey) = vault_core::crypto::wrap_key_for_grant(&ik, &pk)
+        .map_err(|e| JsError::new(&e.to_string()))?;
+
+    let result = serde_json::json!({
+        "grant_wrapped_key": grant_wrapped_key,
+        "ephemeral_pubkey": ephemeral_pubkey.to_vec(),
+    });
+    serde_wasm_bindgen::to_value(&result).map_err(|e| JsError::new(&e.to_string()))
+}
+
+/// Unwrap a grant-format wrapped key (nonce||ciphertext). Auto-detects V0/V1.
+#[wasm_bindgen]
+pub fn unwrap_grant_key(
+    privkey: &[u8],
+    ephemeral_pub: &[u8],
+    grant_wrapped_key: &[u8],
+    recipient_pubkey: &[u8],
+) -> Result<Vec<u8>, JsError> {
+    if privkey.len() != 32 {
+        return Err(JsError::new("private key must be 32 bytes"));
+    }
+    if ephemeral_pub.len() != 32 {
+        return Err(JsError::new("ephemeral public key must be 32 bytes"));
+    }
+    if recipient_pubkey.len() != 32 {
+        return Err(JsError::new("recipient public key must be 32 bytes"));
+    }
+    let mut sk = [0u8; 32];
+    sk.copy_from_slice(privkey);
+    let mut ep = [0u8; 32];
+    ep.copy_from_slice(ephemeral_pub);
+    let mut rpk = [0u8; 32];
+    rpk.copy_from_slice(recipient_pubkey);
+
+    let key = vault_core::crypto::unwrap_grant_key(&sk, &ep, grant_wrapped_key, &rpk)
+        .map_err(|e| JsError::new(&e.to_string()))?;
+    Ok(key.to_vec())
+}
+
+/// Decrypt a user's private key from stored format (nonce(24) || ciphertext).
+#[wasm_bindgen]
+pub fn decrypt_private_key(
+    enc_key: &[u8],
+    encrypted_private_key: &[u8],
+) -> Result<Vec<u8>, JsError> {
+    if enc_key.len() != 32 {
+        return Err(JsError::new("encryption key must be 32 bytes"));
+    }
+    let mut ek = [0u8; 32];
+    ek.copy_from_slice(enc_key);
+
+    let key = vault_core::crypto::decrypt_private_key(&ek, encrypted_private_key)
+        .map_err(|e| JsError::new(&e.to_string()))?;
+    Ok(key.to_vec())
+}
+
 #[wasm_bindgen]
 pub fn derive_subkey_salted(
     master_key: &[u8],
