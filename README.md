@@ -1,53 +1,56 @@
 # vault-wasm
 
-WebAssembly bindings for [BlindKeep](https://blindkeep.com) Vault cryptography.
+WebAssembly bindings for [BlindKeep](https://blindkeep.com) vault-core cryptography. Enables browser-side zero-knowledge encryption without any server-side key access.
 
-Exposes [vault-core](https://github.com/blindkeep-vault/vault-core) primitives to JavaScript for use in the web UI. All crypto runs in the browser — the server never sees plaintext data or keys.
+## What it exposes
 
-## Functions
+All crypto operations run in the browser via WASM -- the server never sees plaintext or keys.
 
-| Function | Description |
-|---|---|
-| `derive_key(password, salt)` | Argon2id key derivation |
-| `derive_subkey(master_key, info)` | HKDF-SHA256 subkey derivation |
-| `encrypt(key, plaintext)` | XChaCha20-Poly1305 encryption |
-| `decrypt(key, ciphertext, nonce)` | XChaCha20-Poly1305 decryption |
-| `generate_random_key()` | 32-byte random key |
-| `generate_keypair()` | X25519 keypair for grant sharing |
-| `wrap_key_for_recipient(key, pubkey)` | Asymmetric key wrapping |
-| `unwrap_key(privkey, ephemeral_pub, wrapped, nonce)` | Asymmetric key unwrapping |
-| `check_policy(policy_json, view_count, operation)` | Grant policy evaluation |
+### Key derivation
+- `derive_key(password, salt)` -- Argon2id master key derivation
+- `derive_subkey(master_key, info)` -- HKDF-SHA256 subkey derivation
+- `derive_subkey_salted(master_key, salt, info)` -- HKDF with explicit salt
+
+### Encryption
+- `encrypt(key, plaintext)` / `decrypt(key, ciphertext, nonce)` -- XChaCha20-Poly1305
+- `encrypt_v1(key, plaintext, aad)` / `decrypt_auto(key, ciphertext, nonce, aad)` -- V1 with AAD
+
+### Key wrapping (grants)
+- `wrap_key_for_recipient(recipient_pubkey, item_key)` -- X25519 ECDH + HKDF
+- `unwrap_key(private_key, ephemeral_pubkey, wrapped_key, nonce)` -- Reverse
+- `wrap_key_for_grant(...)` / `unwrap_grant_key(...)` -- Grant-specific wrapping
+
+### Drops
+- `generate_bip39_mnemonic()` -- 12-word BIP39 passphrase
+- `derive_drop_lookup_key(mnemonic)` -- HKDF lookup key
+- `derive_drop_wrapping_key(mnemonic, version)` -- PBKDF2 wrapping key
+- `wrap_drop_key(...)` / `unwrap_drop_key(...)` -- Drop key encryption
+
+### Utilities
+- `generate_keypair()` / `generate_random_key()` -- X25519 keypair, random 256-bit key
+- `decrypt_private_key(enc_key, encrypted_private_key)` -- Unlock stored private key
+- `pad_plaintext(data)` / `unpad_plaintext(data)` -- Bucket-sized random padding
+- `sha256(data)` -- Hash computation
+- `verify_notarization(cert_json, notary_pubkey)` -- Certificate verification
+- `parse_api_key(raw_key)` / `derive_api_key_keys(secret)` -- API key handling
 
 ## Build
 
-Requires [wasm-pack](https://rustwasm.github.io/wasm-pack/installer/):
-
 ```bash
-# Install wasm-pack
-curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-
-# Build for web
-wasm-pack build --target web --out-dir pkg
-
-# Build for bundler (webpack, etc.)
-wasm-pack build --target bundler --out-dir pkg
+wasm-pack build --target web
 ```
 
-Requires Rust 1.70+ with the `wasm32-unknown-unknown` target:
+Output goes to `pkg/` -- include in your web app as an ES module.
 
-```bash
-rustup target add wasm32-unknown-unknown
-```
-
-## Usage in JavaScript
+## Usage
 
 ```javascript
 import init, { derive_key, encrypt, decrypt } from './pkg/vault_wasm.js';
 
 await init();
 
-const key = derive_key("my-password", new Uint8Array(16));
-const { ciphertext, nonce } = encrypt(key, new TextEncoder().encode("secret"));
+const masterKey = derive_key(password, salt);
+const { ciphertext, nonce } = encrypt(key, plaintext);
 const plaintext = decrypt(key, ciphertext, nonce);
 ```
 
