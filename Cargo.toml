@@ -7,7 +7,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-vault-core = { git = "ssh://git@github.com/blindkeep-vault/vault-core.git" }
+vault-core = { git = "ssh://git@github.com/blindkeep-vault/vault-core.git", default-features = false, features = ["drops"] }
 wasm-bindgen = "0.2"
 serde-wasm-bindgen = "0.6"
 serde = { version = "1", features = ["derive"] }
