@@ -389,6 +389,80 @@ pub fn derive_api_key_keys(secret: &[u8]) -> Result<JsValue, JsError> {
     serde_wasm_bindgen::to_value(&result).map_err(|e| JsError::new(&e.to_string()))
 }
 
+// --- Padding ---
+
+#[wasm_bindgen]
+pub fn pad_plaintext(data: &[u8]) -> Vec<u8> {
+    vault_core::padding::pad_plaintext(data)
+}
+
+#[wasm_bindgen]
+pub fn unpad_plaintext(data: &[u8]) -> Vec<u8> {
+    vault_core::padding::unpad(data).to_vec()
+}
+
+// --- Drops ---
+
+#[wasm_bindgen]
+pub fn normalize_mnemonic(m: &str) -> String {
+    vault_core::drops::normalize_mnemonic(m)
+}
+
+#[wasm_bindgen]
+pub fn derive_drop_lookup_key(mnemonic: &str) -> String {
+    vault_core::drops::derive_drop_lookup_key(mnemonic)
+}
+
+#[wasm_bindgen]
+pub fn derive_drop_wrapping_key(mnemonic: &str, version: i32) -> Vec<u8> {
+    vault_core::drops::derive_drop_wrapping_key(mnemonic, version).to_vec()
+}
+
+#[wasm_bindgen]
+pub fn wrap_drop_key(wrapping_key: &[u8], drop_key: &[u8]) -> Result<Vec<u8>, JsError> {
+    if wrapping_key.len() != 32 {
+        return Err(JsError::new("wrapping key must be 32 bytes"));
+    }
+    if drop_key.len() != 32 {
+        return Err(JsError::new("drop key must be 32 bytes"));
+    }
+    let mut wk = [0u8; 32];
+    wk.copy_from_slice(wrapping_key);
+    let mut dk = [0u8; 32];
+    dk.copy_from_slice(drop_key);
+    vault_core::drops::wrap_drop_key(&wk, &dk).map_err(|e| JsError::new(&e.to_string()))
+}
+
+#[wasm_bindgen]
+pub fn unwrap_drop_key(wrapping_key: &[u8], wrapped: &[u8]) -> Result<Vec<u8>, JsError> {
+    if wrapping_key.len() != 32 {
+        return Err(JsError::new("wrapping key must be 32 bytes"));
+    }
+    let mut wk = [0u8; 32];
+    wk.copy_from_slice(wrapping_key);
+    vault_core::drops::unwrap_drop_key(&wk, wrapped)
+        .map(|k| k.to_vec())
+        .map_err(|e| JsError::new(&e.to_string()))
+}
+
+#[wasm_bindgen]
+pub fn generate_bip39_mnemonic() -> String {
+    vault_core::drops::generate_bip39_mnemonic()
+}
+
+// --- Unlock ---
+
+#[wasm_bindgen]
+pub fn parse_api_key(raw_key: &str) -> Result<JsValue, JsError> {
+    let (prefix, secret) =
+        vault_core::unlock::parse_api_key(raw_key).map_err(|e| JsError::new(&e.to_string()))?;
+    let result = serde_json::json!({
+        "prefix": prefix,
+        "secret": secret.to_vec(),
+    });
+    serde_wasm_bindgen::to_value(&result).map_err(|e| JsError::new(&e.to_string()))
+}
+
 /// Wrap a 32-byte key (e.g. API key private key) with a wrapping key.
 /// Returns nonce(24) || ciphertext as a single byte array.
 #[wasm_bindgen]
