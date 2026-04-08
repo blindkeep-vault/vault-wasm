@@ -580,9 +580,10 @@ pub fn prepare_file_item(
     mime_type: &str,
     file_data: &[u8],
 ) -> Result<JsValue, JsError> {
-    let (envelope_b64, wrapped_key, nonce, encrypted_file) = to_js(
-        client_ops::prepare_file_item_impl(master_key, user_id, label, filename, mime_type, file_data),
-    )?;
+    let (envelope_b64, wrapped_key, nonce, encrypted_file) =
+        to_js(client_ops::prepare_file_item_impl(
+            master_key, user_id, label, filename, mime_type, file_data,
+        ))?;
     to_js_val(json_to_js(&serde_json::json!({
         "envelope_b64": envelope_b64,
         "wrapped_key": wrapped_key,
@@ -607,16 +608,15 @@ pub fn prepare_password_change(
     master_key: &[u8],
     user_id: &str,
 ) -> Result<JsValue, JsError> {
-    let (cur_auth, new_auth, salt, enc_mk, enc_pk, mk) = to_js(
-        client_ops::prepare_password_change_impl(
+    let (cur_auth, new_auth, salt, enc_mk, enc_pk, mk) =
+        to_js(client_ops::prepare_password_change_impl(
             current_password,
             new_password,
             current_client_salt,
             encrypted_private_key,
             master_key,
             user_id,
-        ),
-    )?;
+        ))?;
     to_js_val(json_to_js(&serde_json::json!({
         "current_auth_key_hex": cur_auth,
         "auth_key_hex": new_auth,
@@ -634,8 +634,7 @@ pub fn prepare_password_change(
 /// Create a full-access API key. Returns {secret, key_prefix, auth_key_hex, wrapped_master_key}.
 #[wasm_bindgen]
 pub fn prepare_api_key_full(master_key: &[u8]) -> Result<JsValue, JsError> {
-    let (secret, prefix, auth_hex, wmk) =
-        to_js(client_ops::prepare_api_key_full_impl(master_key))?;
+    let (secret, prefix, auth_hex, wmk) = to_js(client_ops::prepare_api_key_full_impl(master_key))?;
     to_js_val(json_to_js(&serde_json::json!({
         "secret": secret,
         "key_prefix": prefix,
@@ -647,8 +646,7 @@ pub fn prepare_api_key_full(master_key: &[u8]) -> Result<JsValue, JsError> {
 /// Create a scoped API key. Returns {secret, key_prefix, auth_key_hex, encrypted_private_key, public_key}.
 #[wasm_bindgen]
 pub fn prepare_api_key_scoped() -> Result<JsValue, JsError> {
-    let (secret, prefix, auth_hex, epk, pk) =
-        to_js(client_ops::prepare_api_key_scoped_impl())?;
+    let (secret, prefix, auth_hex, epk, pk) = to_js(client_ops::prepare_api_key_scoped_impl())?;
     to_js_val(json_to_js(&serde_json::json!({
         "secret": secret,
         "key_prefix": prefix,
@@ -670,8 +668,11 @@ pub fn prepare_will_payload(
     items_json: &str,
     heir_pubkey: &[u8],
 ) -> Result<JsValue, JsError> {
-    let (wrapped, ewk, ep) =
-        to_js(client_ops::prepare_will_payload_impl(user_id, items_json, heir_pubkey))?;
+    let (wrapped, ewk, ep) = to_js(client_ops::prepare_will_payload_impl(
+        user_id,
+        items_json,
+        heir_pubkey,
+    ))?;
     to_js_val(json_to_js(&serde_json::json!({
         "wrapped_items_json": wrapped,
         "encrypted_will_key": ewk,
@@ -689,7 +690,10 @@ pub fn decrypt_private_key_from_master(
     master_key: &[u8],
     encrypted_private_key: &[u8],
 ) -> Result<Vec<u8>, JsError> {
-    to_js(client_ops::decrypt_private_key_from_master_impl(master_key, encrypted_private_key))
+    to_js(client_ops::decrypt_private_key_from_master_impl(
+        master_key,
+        encrypted_private_key,
+    ))
 }
 
 /// Wrap a raw 32-byte key under the user's enc subkey.
@@ -700,7 +704,9 @@ pub fn wrap_key_for_user(
     user_id: &str,
     raw_key: &[u8],
 ) -> Result<JsValue, JsError> {
-    let (wk, nonce) = to_js(client_ops::wrap_key_for_user_impl(master_key, user_id, raw_key))?;
+    let (wk, nonce) = to_js(client_ops::wrap_key_for_user_impl(
+        master_key, user_id, raw_key,
+    ))?;
     to_js_val(json_to_js(&serde_json::json!({
         "wrapped_key": wk,
         "nonce": nonce,
@@ -748,4 +754,112 @@ pub fn decrypt_owned_inline_envelope(
         encrypted_blob_b64,
     ))?;
     to_js_val(json_to_js(&blob))
+}
+
+// ---------------------------------------------------------------------------
+// Link-secret grants
+// ---------------------------------------------------------------------------
+
+/// Prepare a link-secret grant for an item.
+/// Returns {wrapped_key, nonce, link_secret, claim_key, claim_ciphertext,
+///          claim_token_hash, file_wrapped_key}.
+#[wasm_bindgen]
+pub fn prepare_link_grant(item_key: &[u8], file_key: &[u8]) -> Result<JsValue, JsError> {
+    let fk = if file_key.is_empty() {
+        None
+    } else {
+        Some(file_key)
+    };
+    let (wk, nonce, ls, ck, cc, cth, fwk) =
+        to_js(client_ops::prepare_link_grant_impl(item_key, fk))?;
+    to_js_val(json_to_js(&serde_json::json!({
+        "wrapped_key": wk,
+        "nonce": nonce,
+        "link_secret": ls,
+        "claim_key": ck,
+        "claim_ciphertext": cc,
+        "claim_token_hash": cth,
+        "file_wrapped_key": fwk,
+    })))
+}
+
+/// Decrypt an item from a link-secret grant.
+/// Returns the decrypted SecretBlob.
+#[wasm_bindgen]
+pub fn decrypt_link_grant(
+    claim_key: &[u8],
+    claim_ciphertext: &[u8],
+    wrapped_key: &[u8],
+    nonce: &[u8],
+    blob_data: &[u8],
+    grantor_id: &str,
+) -> Result<JsValue, JsError> {
+    let blob = to_js(client_ops::decrypt_link_grant_impl(
+        claim_key,
+        claim_ciphertext,
+        wrapped_key,
+        nonce,
+        blob_data,
+        grantor_id,
+    ))?;
+    to_js_val(json_to_js(&blob))
+}
+
+/// Unwrap a link-secret grant's item key without decrypting the blob.
+#[wasm_bindgen]
+pub fn unwrap_link_grant_key(
+    claim_key: &[u8],
+    claim_ciphertext: &[u8],
+    wrapped_key: &[u8],
+    nonce: &[u8],
+) -> Result<Vec<u8>, JsError> {
+    to_js(client_ops::unwrap_link_grant_key_impl(
+        claim_key,
+        claim_ciphertext,
+        wrapped_key,
+        nonce,
+    ))
+}
+
+// ---------------------------------------------------------------------------
+// Will payload (mnemonic fallback)
+// ---------------------------------------------------------------------------
+
+/// Prepare a will payload using a BIP39 mnemonic for an heir without an account.
+/// items_json: `[{"item_id":"...","item_key":[...]}]`
+/// Returns {wrapped_items_json, encrypted_will_key, lookup_key, mnemonic}.
+#[wasm_bindgen]
+pub fn prepare_will_payload_mnemonic(user_id: &str, items_json: &str) -> Result<JsValue, JsError> {
+    use vault_core::bindings::client_ops as co;
+    let (wij, ewk, lk, mn) = to_js(co::prepare_will_payload_mnemonic_impl(user_id, items_json))?;
+    to_js_val(json_to_js(&serde_json::json!({
+        "wrapped_items_json": wij,
+        "encrypted_will_key": ewk,
+        "lookup_key": lk,
+        "mnemonic": mn,
+    })))
+}
+
+// ---------------------------------------------------------------------------
+// Input parsing
+// ---------------------------------------------------------------------------
+
+/// Parse drop input (URL, mnemonic, UUID+key). Returns a JSON string describing
+/// the parsed result.
+#[wasm_bindgen]
+pub fn parse_drop_input(key: &str, key2: &str) -> Result<String, JsError> {
+    use vault_core::bindings::parsing_ops;
+    let k2 = if key2.is_empty() { None } else { Some(key2) };
+    to_js(parsing_ops::parse_drop_input_impl(key, k2))
+}
+
+/// Parse a grant-accept URL. Returns {grant_id, claim_key_b64}.
+#[wasm_bindgen]
+pub fn parse_grant_url(url: &str) -> Result<JsValue, JsError> {
+    use vault_core::bindings::parsing_ops;
+    let (gid, ckb) = to_js(parsing_ops::parse_grant_url_impl(url))?;
+    to_js_val(json_to_js(&serde_json::json!({
+        "grant_id": gid,
+        "claim_key_b64": ckb,
+    })))
 }
