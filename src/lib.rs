@@ -565,3 +565,187 @@ pub fn decrypt_group_name(
         encrypted_blob_b64,
     ))
 }
+
+// ---------------------------------------------------------------------------
+// File item
+// ---------------------------------------------------------------------------
+
+/// Encrypt a file item. Returns {envelope_b64, wrapped_key, nonce, encrypted_file}.
+#[wasm_bindgen]
+pub fn prepare_file_item(
+    master_key: &[u8],
+    user_id: &str,
+    label: &str,
+    filename: &str,
+    mime_type: &str,
+    file_data: &[u8],
+) -> Result<JsValue, JsError> {
+    let (envelope_b64, wrapped_key, nonce, encrypted_file) = to_js(
+        client_ops::prepare_file_item_impl(master_key, user_id, label, filename, mime_type, file_data),
+    )?;
+    to_js_val(json_to_js(&serde_json::json!({
+        "envelope_b64": envelope_b64,
+        "wrapped_key": wrapped_key,
+        "nonce": nonce,
+        "encrypted_file": encrypted_file,
+    })))
+}
+
+// ---------------------------------------------------------------------------
+// Password change
+// ---------------------------------------------------------------------------
+
+/// Prepare key material for a password change.
+/// Returns {current_auth_key_hex, auth_key_hex, client_salt, encrypted_master_key,
+///          encrypted_private_key, master_key}.
+#[wasm_bindgen]
+pub fn prepare_password_change(
+    current_password: &str,
+    new_password: &str,
+    current_client_salt: &[u8],
+    encrypted_private_key: &[u8],
+    master_key: &[u8],
+    user_id: &str,
+) -> Result<JsValue, JsError> {
+    let (cur_auth, new_auth, salt, enc_mk, enc_pk, mk) = to_js(
+        client_ops::prepare_password_change_impl(
+            current_password,
+            new_password,
+            current_client_salt,
+            encrypted_private_key,
+            master_key,
+            user_id,
+        ),
+    )?;
+    to_js_val(json_to_js(&serde_json::json!({
+        "current_auth_key_hex": cur_auth,
+        "auth_key_hex": new_auth,
+        "client_salt": salt,
+        "encrypted_master_key": enc_mk,
+        "encrypted_private_key": enc_pk,
+        "master_key": mk,
+    })))
+}
+
+// ---------------------------------------------------------------------------
+// API keys
+// ---------------------------------------------------------------------------
+
+/// Create a full-access API key. Returns {secret, key_prefix, auth_key_hex, wrapped_master_key}.
+#[wasm_bindgen]
+pub fn prepare_api_key_full(master_key: &[u8]) -> Result<JsValue, JsError> {
+    let (secret, prefix, auth_hex, wmk) =
+        to_js(client_ops::prepare_api_key_full_impl(master_key))?;
+    to_js_val(json_to_js(&serde_json::json!({
+        "secret": secret,
+        "key_prefix": prefix,
+        "auth_key_hex": auth_hex,
+        "wrapped_master_key": wmk,
+    })))
+}
+
+/// Create a scoped API key. Returns {secret, key_prefix, auth_key_hex, encrypted_private_key, public_key}.
+#[wasm_bindgen]
+pub fn prepare_api_key_scoped() -> Result<JsValue, JsError> {
+    let (secret, prefix, auth_hex, epk, pk) =
+        to_js(client_ops::prepare_api_key_scoped_impl())?;
+    to_js_val(json_to_js(&serde_json::json!({
+        "secret": secret,
+        "key_prefix": prefix,
+        "auth_key_hex": auth_hex,
+        "encrypted_private_key": epk,
+        "public_key": pk,
+    })))
+}
+
+// ---------------------------------------------------------------------------
+// Will payload
+// ---------------------------------------------------------------------------
+
+/// Prepare a will payload. items_json is a JSON array of [{item_id, item_key}].
+/// Returns {wrapped_items_json, encrypted_will_key, ephemeral_pubkey}.
+#[wasm_bindgen]
+pub fn prepare_will_payload(
+    user_id: &str,
+    items_json: &str,
+    heir_pubkey: &[u8],
+) -> Result<JsValue, JsError> {
+    let (wrapped, ewk, ep) =
+        to_js(client_ops::prepare_will_payload_impl(user_id, items_json, heir_pubkey))?;
+    to_js_val(json_to_js(&serde_json::json!({
+        "wrapped_items_json": wrapped,
+        "encrypted_will_key": ewk,
+        "ephemeral_pubkey": ep,
+    })))
+}
+
+// ---------------------------------------------------------------------------
+// Key management helpers
+// ---------------------------------------------------------------------------
+
+/// Decrypt a user's private key from master key + encrypted private key.
+#[wasm_bindgen]
+pub fn decrypt_private_key_from_master(
+    master_key: &[u8],
+    encrypted_private_key: &[u8],
+) -> Result<Vec<u8>, JsError> {
+    to_js(client_ops::decrypt_private_key_from_master_impl(master_key, encrypted_private_key))
+}
+
+/// Wrap a raw 32-byte key under the user's enc subkey.
+/// Returns {wrapped_key, nonce}.
+#[wasm_bindgen]
+pub fn wrap_key_for_user(
+    master_key: &[u8],
+    user_id: &str,
+    raw_key: &[u8],
+) -> Result<JsValue, JsError> {
+    let (wk, nonce) = to_js(client_ops::wrap_key_for_user_impl(master_key, user_id, raw_key))?;
+    to_js_val(json_to_js(&serde_json::json!({
+        "wrapped_key": wk,
+        "nonce": nonce,
+    })))
+}
+
+/// Unwrap an owned item key and re-wrap for an API key's pubkey.
+/// Returns {wrapped_key, ephemeral_pubkey, nonce}.
+#[wasm_bindgen]
+pub fn grant_item_to_api_key(
+    master_key: &[u8],
+    user_id: &str,
+    item_wrapped_key: &[u8],
+    item_nonce: &[u8],
+    api_key_pubkey: &[u8],
+) -> Result<JsValue, JsError> {
+    let (wk, ep, nonce) = to_js(client_ops::grant_item_to_api_key_impl(
+        master_key,
+        user_id,
+        item_wrapped_key,
+        item_nonce,
+        api_key_pubkey,
+    ))?;
+    to_js_val(json_to_js(&serde_json::json!({
+        "wrapped_key": wk,
+        "ephemeral_pubkey": ep,
+        "nonce": nonce,
+    })))
+}
+
+/// Decrypt a file item's metadata envelope (inline base64 blob).
+#[wasm_bindgen]
+pub fn decrypt_owned_inline_envelope(
+    master_key: &[u8],
+    user_id: &str,
+    wrapped_key: &[u8],
+    nonce: &[u8],
+    encrypted_blob_b64: &str,
+) -> Result<JsValue, JsError> {
+    let blob = to_js(client_ops::decrypt_owned_inline_envelope_impl(
+        master_key,
+        user_id,
+        wrapped_key,
+        nonce,
+        encrypted_blob_b64,
+    ))?;
+    to_js_val(json_to_js(&blob))
+}
