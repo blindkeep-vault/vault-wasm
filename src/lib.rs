@@ -448,6 +448,61 @@ pub fn generate_bip39_mnemonic() -> String {
     vault_core::drops::generate_bip39_mnemonic()
 }
 
+#[wasm_bindgen]
+pub fn validate_bip39_mnemonic(mnemonic: &str) -> bool {
+    vault_core::drops::validate_bip39_mnemonic(mnemonic)
+}
+
+#[wasm_bindgen]
+pub fn derive_will_wrapping_key(mnemonic: &str, version: i32) -> Vec<u8> {
+    vault_core::drops::derive_will_wrapping_key(mnemonic, version).to_vec()
+}
+
+#[wasm_bindgen]
+pub fn derive_will_lookup_key(mnemonic: &str) -> String {
+    vault_core::drops::derive_will_lookup_key(mnemonic)
+}
+
+#[wasm_bindgen]
+pub fn derive_recovery_keys(mnemonic: &str, version: i32) -> Result<JsValue, JsError> {
+    let (wrapping_key, auth_key) = vault_core::drops::derive_recovery_keys(mnemonic, version);
+    let result = serde_json::json!({
+        "wrapping_key": wrapping_key.to_vec(),
+        "auth_key": auth_key.to_vec(),
+    });
+    serde_wasm_bindgen::to_value(&result).map_err(|e| JsError::new(&e.to_string()))
+}
+
+#[wasm_bindgen]
+pub fn build_envelope(filename: &str, data: &[u8], mime_type: &str) -> Vec<u8> {
+    vault_core::envelope::build_envelope(filename, data, mime_type)
+}
+
+#[wasm_bindgen]
+pub fn parse_envelope(data: &[u8], fallback_id: &str) -> Result<JsValue, JsError> {
+    let (name, file_data) = vault_core::envelope::parse_envelope(data, fallback_id);
+    let result = serde_json::json!({
+        "name": name,
+        "data": file_data,
+    });
+    serde_wasm_bindgen::to_value(&result).map_err(|e| JsError::new(&e.to_string()))
+}
+
+/// Decrypt an encrypted blob (V0/V1 auto-detection), unpad, and return plaintext.
+#[wasm_bindgen]
+pub fn decrypt_blob(item_key: &[u8], blob_data: &[u8], user_id: &str) -> Result<Vec<u8>, JsError> {
+    if item_key.len() != 32 {
+        return Err(JsError::new("item key must be 32 bytes"));
+    }
+    let mut ik = [0u8; 32];
+    ik.copy_from_slice(item_key);
+    let decrypted = vault_core::envelope::decrypt_blob_bytes(blob_data, &ik, user_id)
+        .map_err(|e| JsError::new(&e.to_string()))?;
+    // Unpad
+    let unpadded = vault_core::padding::unpad(&decrypted);
+    Ok(unpadded.to_vec())
+}
+
 // --- Unlock ---
 
 #[wasm_bindgen]
