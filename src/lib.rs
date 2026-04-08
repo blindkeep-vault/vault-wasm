@@ -29,12 +29,10 @@ pub fn derive_subkey(master_key: &[u8], info: &str) -> Result<Vec<u8>, JsError> 
 
 #[wasm_bindgen]
 pub fn generate_keypair() -> Result<JsValue, JsError> {
-    use x25519_dalek::{PublicKey, StaticSecret};
-    let secret = StaticSecret::random_from_rng(rand::rngs::OsRng);
-    let public = PublicKey::from(&secret);
+    let (private_key, public_key) = vault_core::crypto::generate_x25519_keypair();
     let result = serde_json::json!({
-        "private_key": secret.to_bytes().to_vec(),
-        "public_key": public.as_bytes().to_vec(),
+        "private_key": private_key.to_vec(),
+        "public_key": public_key.to_vec(),
     });
     serde_wasm_bindgen::to_value(&result).map_err(|e| JsError::new(&e.to_string()))
 }
@@ -479,4 +477,174 @@ pub fn wrap_key_symmetric(wrapping_key: &[u8], key_to_wrap: &[u8]) -> Result<Vec
     ktw.copy_from_slice(key_to_wrap);
     let mk = vault_core::crypto::MasterKey::from_bytes(ktw);
     vault_core::crypto::wrap_master_key(&wk, &mk).map_err(|e| JsError::new(&e.to_string()))
+}
+
+// ---------------------------------------------------------------------------
+// High-level client orchestration (vault_core::client)
+// ---------------------------------------------------------------------------
+
+fn mk_from_slice(key: &[u8]) -> Result<vault_core::crypto::MasterKey, JsError> {
+    if key.len() != 32 {
+        return Err(JsError::new("master key must be 32 bytes"));
+    }
+    let mut arr = [0u8; 32];
+    arr.copy_from_slice(key);
+    Ok(vault_core::crypto::MasterKey::from_bytes(arr))
+}
+
+/// Prepare an encrypted item for upload.
+/// Returns {encrypted_blob_b64, wrapped_key, nonce}.
+#[wasm_bindgen]
+pub fn prepare_item_create(
+    master_key: &[u8],
+    user_id: &str,
+    label: &str,
+    value: &str,
+) -> Result<JsValue, JsError> {
+    let mk = mk_from_slice(master_key)?;
+    let p = vault_core::client::prepare_item_create(&mk, user_id, label, value, None)
+        .map_err(|e| JsError::new(&e.to_string()))?;
+    let result = serde_json::json!({
+        "encrypted_blob_b64": p.encrypted_blob_b64,
+        "wrapped_key": p.wrapped_key,
+        "nonce": p.nonce.to_vec(),
+    });
+    serde_wasm_bindgen::to_value(&result).map_err(|e| JsError::new(&e.to_string()))
+}
+
+/// Decrypt an owned item's blob. Returns the parsed SecretBlob as JSON.
+#[wasm_bindgen]
+pub fn decrypt_owned_item(
+    master_key: &[u8],
+    user_id: &str,
+    wrapped_key: &[u8],
+    nonce: &[u8],
+    blob_data: &[u8],
+) -> Result<JsValue, JsError> {
+    let mk = mk_from_slice(master_key)?;
+    let blob = vault_core::client::decrypt_owned_item(&mk, user_id, wrapped_key, nonce, blob_data)
+        .map_err(|e| JsError::new(&e.to_string()))?;
+    serde_wasm_bindgen::to_value(&blob).map_err(|e| JsError::new(&e.to_string()))
+}
+
+/// Unwrap an owned item's key. Returns the 32-byte item key.
+#[wasm_bindgen]
+pub fn unwrap_owned_item_key(
+    master_key: &[u8],
+    user_id: &str,
+    wrapped_key: &[u8],
+    nonce: &[u8],
+) -> Result<Vec<u8>, JsError> {
+    let mk = mk_from_slice(master_key)?;
+    let key = vault_core::client::unwrap_owned_item_key(&mk, user_id, wrapped_key, nonce)
+        .map_err(|e| JsError::new(&e.to_string()))?;
+    Ok(key.to_vec())
+}
+
+/// Prepare a grant: wrap an item key for a recipient.
+/// Returns {grant_wrapped_key, ephemeral_pubkey}.
+#[wasm_bindgen]
+pub fn prepare_grant(item_key: &[u8], recipient_pubkey: &[u8]) -> Result<JsValue, JsError> {
+    if item_key.len() != 32 || recipient_pubkey.len() != 32 {
+        return Err(JsError::new("keys must be 32 bytes"));
+    }
+    let mut ik = [0u8; 32];
+    ik.copy_from_slice(item_key);
+    let mut pk = [0u8; 32];
+    pk.copy_from_slice(recipient_pubkey);
+    let g =
+        vault_core::client::prepare_grant(&ik, &pk).map_err(|e| JsError::new(&e.to_string()))?;
+    let result = serde_json::json!({
+        "grant_wrapped_key": g.grant_wrapped_key,
+        "ephemeral_pubkey": g.ephemeral_pubkey.to_vec(),
+    });
+    serde_wasm_bindgen::to_value(&result).map_err(|e| JsError::new(&e.to_string()))
+}
+
+/// Decrypt a granted item's blob. Returns the parsed SecretBlob as JSON.
+#[wasm_bindgen]
+pub fn decrypt_granted_item(
+    private_key: &[u8],
+    recipient_pubkey: &[u8],
+    ephemeral_pubkey: &[u8],
+    grant_wrapped_key: &[u8],
+    blob_data: &[u8],
+    grantor_id: &str,
+) -> Result<JsValue, JsError> {
+    if private_key.len() != 32 || recipient_pubkey.len() != 32 || ephemeral_pubkey.len() != 32 {
+        return Err(JsError::new("keys must be 32 bytes"));
+    }
+    let mut sk = [0u8; 32];
+    sk.copy_from_slice(private_key);
+    let mut rpk = [0u8; 32];
+    rpk.copy_from_slice(recipient_pubkey);
+    let mut ep = [0u8; 32];
+    ep.copy_from_slice(ephemeral_pubkey);
+    let blob = vault_core::client::decrypt_granted_item(
+        &sk,
+        &rpk,
+        &ep,
+        grant_wrapped_key,
+        blob_data,
+        grantor_id,
+    )
+    .map_err(|e| JsError::new(&e.to_string()))?;
+    serde_wasm_bindgen::to_value(&blob).map_err(|e| JsError::new(&e.to_string()))
+}
+
+/// Prepare registration key material.
+/// Returns {auth_key_hex, public_key, encrypted_private_key, client_salt}.
+#[wasm_bindgen]
+pub fn prepare_registration(password: &str) -> Result<JsValue, JsError> {
+    let reg = vault_core::client::prepare_registration(password)
+        .map_err(|e| JsError::new(&e.to_string()))?;
+    let result = serde_json::json!({
+        "auth_key_hex": reg.auth_key_hex,
+        "public_key": reg.public_key.to_vec(),
+        "encrypted_private_key": reg.encrypted_private_key,
+        "client_salt": reg.client_salt,
+        "master_key": reg.master_key.as_bytes().to_vec(),
+    });
+    serde_wasm_bindgen::to_value(&result).map_err(|e| JsError::new(&e.to_string()))
+}
+
+/// Prepare login key material.
+/// Returns {master_key, auth_key_hex}.
+#[wasm_bindgen]
+pub fn prepare_login(password: &str, client_salt: &[u8]) -> Result<JsValue, JsError> {
+    let login = vault_core::client::prepare_login(password, client_salt)
+        .map_err(|e| JsError::new(&e.to_string()))?;
+    let result = serde_json::json!({
+        "master_key": login.master_key.as_bytes().to_vec(),
+        "auth_key_hex": login.auth_key_hex,
+    });
+    serde_wasm_bindgen::to_value(&result).map_err(|e| JsError::new(&e.to_string()))
+}
+
+/// Encrypt a group name. Returns {encrypted_blob_b64, wrapped_key, nonce}.
+#[wasm_bindgen]
+pub fn encrypt_group(master_key: &[u8], user_id: &str, name: &str) -> Result<JsValue, JsError> {
+    let mk = mk_from_slice(master_key)?;
+    let (blob_b64, wrapped_key, nonce) = vault_core::client::encrypt_group(&mk, user_id, name)
+        .map_err(|e| JsError::new(&e.to_string()))?;
+    let result = serde_json::json!({
+        "encrypted_blob_b64": blob_b64,
+        "wrapped_key": wrapped_key,
+        "nonce": nonce.to_vec(),
+    });
+    serde_wasm_bindgen::to_value(&result).map_err(|e| JsError::new(&e.to_string()))
+}
+
+/// Decrypt a group name from its encrypted blob.
+#[wasm_bindgen]
+pub fn decrypt_group_name(
+    master_key: &[u8],
+    user_id: &str,
+    wrapped_key: &[u8],
+    nonce: &[u8],
+    encrypted_blob_b64: &str,
+) -> Result<String, JsError> {
+    let mk = mk_from_slice(master_key)?;
+    vault_core::client::decrypt_group_name(&mk, user_id, wrapped_key, nonce, encrypted_blob_b64)
+        .map_err(|e| JsError::new(&e.to_string()))
 }
