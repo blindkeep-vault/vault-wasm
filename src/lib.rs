@@ -703,3 +703,33 @@ pub fn decrypt_group_name(
     vault_core::client::decrypt_group_name(&mk, user_id, wrapped_key, nonce, encrypted_blob_b64)
         .map_err(|e| JsError::new(&e.to_string()))
 }
+
+/// Encrypt a 32-byte link secret with a claim key using AES-256-GCM.
+/// Returns iv(12) || ciphertext. Compatible with SubtleCrypto AES-GCM.
+#[wasm_bindgen]
+pub fn encrypt_claim_secret(claim_key: &[u8], link_secret: &[u8]) -> Result<Vec<u8>, JsError> {
+    if claim_key.len() != 32 {
+        return Err(JsError::new("claim key must be 32 bytes"));
+    }
+    if link_secret.len() != 32 {
+        return Err(JsError::new("link secret must be 32 bytes"));
+    }
+    let mut ck = [0u8; 32];
+    ck.copy_from_slice(claim_key);
+    let mut ls = [0u8; 32];
+    ls.copy_from_slice(link_secret);
+    vault_core::crypto::encrypt_claim_secret(&ck, &ls).map_err(|e| JsError::new(&e.to_string()))
+}
+
+/// Decrypt a 32-byte link secret from iv(12) || ciphertext using AES-256-GCM.
+#[wasm_bindgen]
+pub fn decrypt_claim_secret(claim_key: &[u8], claim_ciphertext: &[u8]) -> Result<Vec<u8>, JsError> {
+    if claim_key.len() != 32 {
+        return Err(JsError::new("claim key must be 32 bytes"));
+    }
+    let mut ck = [0u8; 32];
+    ck.copy_from_slice(claim_key);
+    let result = vault_core::crypto::decrypt_claim_secret(&ck, claim_ciphertext)
+        .map_err(|e| JsError::new(&e.to_string()))?;
+    Ok(result.to_vec())
+}
