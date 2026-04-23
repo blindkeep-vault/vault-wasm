@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 
+# Self-root the workspace so cargo does not walk up past a worktree's
+# excluding Cargo.toml into the outer monorepo. See vault-core/Cargo.toml.
+[workspace]
+
 [lib]
 crate-type = ["cdylib"]
 
