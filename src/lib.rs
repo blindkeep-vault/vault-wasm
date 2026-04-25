@@ -273,8 +273,8 @@ pub fn decrypt_claim_secret(claim_key: &[u8], claim_ciphertext: &[u8]) -> Result
 /// U+2028/U+2029); older runtimes must polyfill.
 #[wasm_bindgen]
 pub fn canonical_json_bytes(json_str: &str) -> Result<Vec<u8>, JsError> {
-    let value: serde_json::Value = serde_json::from_str(json_str)
-        .map_err(|e| JsError::new(&format!("invalid JSON: {e}")))?;
+    let value: serde_json::Value =
+        serde_json::from_str(json_str).map_err(|e| JsError::new(&format!("invalid JSON: {e}")))?;
     vault_core::merkle::canonical_json_bytes(&value).map_err(|e| JsError::new(&e.to_string()))
 }
 
@@ -283,8 +283,11 @@ pub fn canonical_json_bytes(json_str: &str) -> Result<Vec<u8>, JsError> {
 /// `canonical_json_bytes(event)`); `blob_hash` should be empty for event-log
 /// entries (they have no separate blob). 32 zero bytes are substituted for
 /// an empty `blob_hash`, matching the server's leaf construction.
+///
+/// Argument order matches `vault_core::merkle::leaf_hash` and the Python
+/// binding so the same call shape works across all three language surfaces.
 #[wasm_bindgen]
-pub fn event_log_leaf_hash(
+pub fn leaf_hash(
     entry_id: &str,
     payload_hash: &[u8],
     blob_hash: &[u8],
@@ -297,10 +300,9 @@ pub fn event_log_leaf_hash(
     }
     let bh = if blob_hash.is_empty() {
         None
+    } else if blob_hash.len() != 32 {
+        return Err(JsError::new("blob_hash must be 32 bytes (or empty)"));
     } else {
-        if blob_hash.len() != 32 {
-            return Err(JsError::new("blob_hash must be 32 bytes (or empty)"));
-        }
         Some(blob_hash)
     };
     Ok(vault_core::merkle::leaf_hash(id, payload_hash, bh, timestamp_millis).to_vec())
@@ -311,7 +313,7 @@ pub fn event_log_leaf_hash(
 /// upward); `leaf` and `expected_root` are 32 bytes. Returns true iff the
 /// reconstruction matches.
 #[wasm_bindgen]
-pub fn event_log_verify_inclusion(
+pub fn verify_inclusion(
     leaf: &[u8],
     tree_index: i64,
     tree_size: i64,
@@ -329,11 +331,7 @@ pub fn event_log_verify_inclusion(
     let leaf_arr: [u8; 32] = leaf.try_into().unwrap();
     let root_arr: [u8; 32] = expected_root.try_into().unwrap();
     Ok(vault_core::merkle::verify_inclusion(
-        &leaf_arr,
-        tree_index,
-        tree_size,
-        &proof_vec,
-        &root_arr,
+        &leaf_arr, tree_index, tree_size, &proof_vec, &root_arr,
     ))
 }
 
