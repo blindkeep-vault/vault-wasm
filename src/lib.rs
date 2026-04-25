@@ -262,6 +262,82 @@ pub fn decrypt_claim_secret(claim_key: &[u8], claim_ciphertext: &[u8]) -> Result
 }
 
 // ---------------------------------------------------------------------------
+// Event log / Merkle
+// ---------------------------------------------------------------------------
+
+/// Canonicalize a JSON value to deterministic bytes per the BlindKeep
+/// canonical-JSON rules (see `doc/SPEC.md`). `json_str` is parsed first so
+/// callers don't have to round-trip through serde-wasm-bindgen — pass the
+/// output of `JSON.stringify(payload)`. The post-ES2019 `JSON.stringify`
+/// default already matches the spec (no extra escape pass on
+/// U+2028/U+2029); older runtimes must polyfill.
+#[wasm_bindgen]
+pub fn canonical_json_bytes(json_str: &str) -> Result<Vec<u8>, JsError> {
+    let value: serde_json::Value = serde_json::from_str(json_str)
+        .map_err(|e| JsError::new(&format!("invalid JSON: {e}")))?;
+    vault_core::merkle::canonical_json_bytes(&value).map_err(|e| JsError::new(&e.to_string()))
+}
+
+/// Compute the Merkle leaf hash for an event-log entry.
+/// `entry_id` is a UUID string; `payload_hash` is 32 bytes (the SHA-256 of
+/// `canonical_json_bytes(event)`); `blob_hash` should be empty for event-log
+/// entries (they have no separate blob). 32 zero bytes are substituted for
+/// an empty `blob_hash`, matching the server's leaf construction.
+#[wasm_bindgen]
+pub fn event_log_leaf_hash(
+    entry_id: &str,
+    payload_hash: &[u8],
+    blob_hash: &[u8],
+    timestamp_millis: i64,
+) -> Result<Vec<u8>, JsError> {
+    let id = uuid::Uuid::parse_str(entry_id)
+        .map_err(|e| JsError::new(&format!("entry_id is not a UUID: {e}")))?;
+    if payload_hash.len() != 32 {
+        return Err(JsError::new("payload_hash must be 32 bytes"));
+    }
+    let bh = if blob_hash.is_empty() {
+        None
+    } else {
+        if blob_hash.len() != 32 {
+            return Err(JsError::new("blob_hash must be 32 bytes (or empty)"));
+        }
+        Some(blob_hash)
+    };
+    Ok(vault_core::merkle::leaf_hash(id, payload_hash, bh, timestamp_millis).to_vec())
+}
+
+/// Verify a Merkle inclusion proof against a tree root. Pure function — no
+/// network I/O. `proof` is a JS array of 32-byte sibling hashes (leaf-level
+/// upward); `leaf` and `expected_root` are 32 bytes. Returns true iff the
+/// reconstruction matches.
+#[wasm_bindgen]
+pub fn event_log_verify_inclusion(
+    leaf: &[u8],
+    tree_index: i64,
+    tree_size: i64,
+    proof: JsValue,
+    expected_root: &[u8],
+) -> Result<bool, JsError> {
+    if leaf.len() != 32 {
+        return Err(JsError::new("leaf must be 32 bytes"));
+    }
+    if expected_root.len() != 32 {
+        return Err(JsError::new("expected_root must be 32 bytes"));
+    }
+    let proof_vec: Vec<Vec<u8>> = serde_wasm_bindgen::from_value(proof)
+        .map_err(|e| JsError::new(&format!("proof must be an array of byte arrays: {e}")))?;
+    let leaf_arr: [u8; 32] = leaf.try_into().unwrap();
+    let root_arr: [u8; 32] = expected_root.try_into().unwrap();
+    Ok(vault_core::merkle::verify_inclusion(
+        &leaf_arr,
+        tree_index,
+        tree_size,
+        &proof_vec,
+        &root_arr,
+    ))
+}
+
+// ---------------------------------------------------------------------------
 // Notarization
 // ---------------------------------------------------------------------------
 
