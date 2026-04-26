@@ -1,6 +1,6 @@
 [package]
 name = "vault-wasm"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 
@@ -24,4 +24,5 @@ x25519-dalek = { version = "2", features = ["static_secrets"] }
 uuid = { version = "1", features = ["js"] }
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 sha2 = "0.10"
+zeroize = "1"
 

@@ -1,6 +1,7 @@
 use vault_core::bindings;
 use vault_core::bindings::client_ops;
 use wasm_bindgen::prelude::*;
+use zeroize::Zeroizing;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -18,23 +19,36 @@ fn json_to_js(val: &impl serde::Serialize) -> Result<JsValue, String> {
     serde_wasm_bindgen::to_value(val).map_err(|e| e.to_string())
 }
 
+/// Drain a `Zeroizing<Vec<u8>>` into a plain `Vec<u8>` for FFI marshaling.
+///
+/// `wasm-bindgen` rejects `Zeroizing<Vec<u8>>` as a return type, so the
+/// non-zeroizing `Vec<u8>` is unavoidable at the JS boundary. Keeping the
+/// bytes inside a `Zeroizing` wrapper through `bindings::*_impl`'s return
+/// keeps key returns typed consistently with the rest of vault-core and
+/// closes the small drop window between the impl returning and the FFI
+/// marshal. wasm-bindgen still copies the bytes into JS-managed linear
+/// memory where they live until GC — see #136 layer 2.
+fn drain(mut z: Zeroizing<Vec<u8>>) -> Vec<u8> {
+    std::mem::take(&mut *z)
+}
+
 // ---------------------------------------------------------------------------
 // Key derivation
 // ---------------------------------------------------------------------------
 
 #[wasm_bindgen]
 pub fn derive_key(password: &str, salt: &[u8]) -> Result<Vec<u8>, JsError> {
-    to_js(bindings::derive_key_impl(password, salt))
+    to_js(bindings::derive_key_impl(password, salt).map(drain))
 }
 
 #[wasm_bindgen]
 pub fn derive_key_legacy(password: &str, salt: &[u8]) -> Result<Vec<u8>, JsError> {
-    to_js(bindings::derive_key_legacy_impl(password, salt))
+    to_js(bindings::derive_key_legacy_impl(password, salt).map(drain))
 }
 
 #[wasm_bindgen]
 pub fn derive_subkey(master_key: &[u8], info: &str) -> Result<Vec<u8>, JsError> {
-    to_js(bindings::derive_subkey_impl(master_key, info))
+    to_js(bindings::derive_subkey_impl(master_key, info).map(drain))
 }
 
 #[wasm_bindgen]
@@ -43,7 +57,7 @@ pub fn derive_subkey_salted(
     salt: &[u8],
     info: &str,
 ) -> Result<Vec<u8>, JsError> {
-    to_js(bindings::derive_subkey_salted_impl(master_key, salt, info))
+    to_js(bindings::derive_subkey_salted_impl(master_key, salt, info).map(drain))
 }
 
 /// Derive API key wrapping_key and auth_key from a 32-byte secret.
@@ -52,8 +66,8 @@ pub fn derive_subkey_salted(
 pub fn derive_api_key_keys(secret: &[u8]) -> Result<JsValue, JsError> {
     let (wk, ak) = to_js(bindings::derive_api_key_keys_impl(secret))?;
     to_js_val(json_to_js(&serde_json::json!({
-        "wrapping_key": wk,
-        "auth_key": ak,
+        "wrapping_key": drain(wk),
+        "auth_key": drain(ak),
     })))
 }
 
@@ -65,14 +79,14 @@ pub fn derive_api_key_keys(secret: &[u8]) -> Result<JsValue, JsError> {
 pub fn generate_keypair() -> Result<JsValue, JsError> {
     let (private_key, public_key) = bindings::generate_keypair_impl();
     to_js_val(json_to_js(&serde_json::json!({
-        "private_key": private_key,
+        "private_key": drain(private_key),
         "public_key": public_key,
     })))
 }
 
 #[wasm_bindgen]
 pub fn generate_random_key() -> Vec<u8> {
-    bindings::generate_random_key_impl()
+    drain(bindings::generate_random_key_impl())
 }
 
 // ---------------------------------------------------------------------------
@@ -80,17 +94,8 @@ pub fn generate_random_key() -> Vec<u8> {
 // ---------------------------------------------------------------------------
 
 #[wasm_bindgen]
-pub fn encrypt(key: &[u8], plaintext: &[u8]) -> Result<JsValue, JsError> {
-    let (ciphertext, nonce) = to_js(bindings::encrypt_impl(key, plaintext))?;
-    to_js_val(json_to_js(&serde_json::json!({
-        "ciphertext": ciphertext,
-        "nonce": nonce,
-    })))
-}
-
-#[wasm_bindgen]
 pub fn decrypt(key: &[u8], ciphertext: &[u8], nonce: &[u8]) -> Result<Vec<u8>, JsError> {
-    to_js(bindings::decrypt_impl(key, ciphertext, nonce))
+    to_js(bindings::decrypt_impl(key, ciphertext, nonce).map(drain))
 }
 
 #[wasm_bindgen]
@@ -109,28 +114,15 @@ pub fn decrypt_auto(
     nonce: &[u8],
     aad: &[u8],
 ) -> Result<Vec<u8>, JsError> {
-    to_js(bindings::decrypt_auto_impl(key, ciphertext, nonce, aad))
+    to_js(bindings::decrypt_auto_impl(key, ciphertext, nonce, aad).map(drain))
 }
 
 // ---------------------------------------------------------------------------
-// Asymmetric key wrapping (V0)
+// Asymmetric key unwrap (V0). The V0 wrap binding was removed in #178; the
+// last vault-ui caller (`grantItemToApiKey`) now uses
+// `wrap_key_for_recipient_v1`. V0 unwrap stays so legacy
+// `api_key_grants` rows with `format_version = 0` remain readable.
 // ---------------------------------------------------------------------------
-
-#[wasm_bindgen]
-pub fn wrap_key_for_recipient(
-    item_key: &[u8],
-    recipient_pubkey: &[u8],
-) -> Result<JsValue, JsError> {
-    let (wrapped_key, ephemeral_pubkey, nonce) = to_js(bindings::wrap_key_for_recipient_impl(
-        item_key,
-        recipient_pubkey,
-    ))?;
-    to_js_val(json_to_js(&serde_json::json!({
-        "wrapped_key": wrapped_key,
-        "ephemeral_pubkey": ephemeral_pubkey,
-        "nonce": nonce,
-    })))
-}
 
 #[wasm_bindgen]
 pub fn unwrap_key(
@@ -139,12 +131,7 @@ pub fn unwrap_key(
     wrapped: &[u8],
     nonce: &[u8],
 ) -> Result<Vec<u8>, JsError> {
-    to_js(bindings::unwrap_key_impl(
-        privkey,
-        ephemeral_pub,
-        wrapped,
-        nonce,
-    ))
+    to_js(bindings::unwrap_key_impl(privkey, ephemeral_pub, wrapped, nonce).map(drain))
 }
 
 // ---------------------------------------------------------------------------
@@ -175,13 +162,10 @@ pub fn unwrap_key_v1(
     nonce: &[u8],
     recipient_pubkey: &[u8],
 ) -> Result<Vec<u8>, JsError> {
-    to_js(bindings::unwrap_key_v1_impl(
-        privkey,
-        ephemeral_pub,
-        wrapped,
-        nonce,
-        recipient_pubkey,
-    ))
+    to_js(
+        bindings::unwrap_key_v1_impl(privkey, ephemeral_pub, wrapped, nonce, recipient_pubkey)
+            .map(drain),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -210,12 +194,15 @@ pub fn unwrap_grant_key(
     grant_wrapped_key: &[u8],
     recipient_pubkey: &[u8],
 ) -> Result<Vec<u8>, JsError> {
-    to_js(bindings::unwrap_grant_key_impl(
-        privkey,
-        ephemeral_pub,
-        grant_wrapped_key,
-        recipient_pubkey,
-    ))
+    to_js(
+        bindings::unwrap_grant_key_impl(
+            privkey,
+            ephemeral_pub,
+            grant_wrapped_key,
+            recipient_pubkey,
+        )
+        .map(drain),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -235,10 +222,7 @@ pub fn decrypt_private_key(
     enc_key: &[u8],
     encrypted_private_key: &[u8],
 ) -> Result<Vec<u8>, JsError> {
-    to_js(bindings::decrypt_private_key_impl(
-        enc_key,
-        encrypted_private_key,
-    ))
+    to_js(bindings::decrypt_private_key_impl(enc_key, encrypted_private_key).map(drain))
 }
 
 // ---------------------------------------------------------------------------
@@ -255,10 +239,7 @@ pub fn encrypt_claim_secret(claim_key: &[u8], link_secret: &[u8]) -> Result<Vec<
 /// Decrypt a 32-byte link secret from iv(12) || ciphertext using AES-256-GCM.
 #[wasm_bindgen]
 pub fn decrypt_claim_secret(claim_key: &[u8], claim_ciphertext: &[u8]) -> Result<Vec<u8>, JsError> {
-    to_js(bindings::decrypt_claim_secret_impl(
-        claim_key,
-        claim_ciphertext,
-    ))
+    to_js(bindings::decrypt_claim_secret_impl(claim_key, claim_ciphertext).map(drain))
 }
 
 // ---------------------------------------------------------------------------
@@ -417,7 +398,7 @@ pub fn derive_drop_lookup_key(mnemonic: &str) -> String {
 
 #[wasm_bindgen]
 pub fn derive_drop_wrapping_key(mnemonic: &str, version: i32) -> Vec<u8> {
-    bindings::derive_drop_wrapping_key_impl(mnemonic, version)
+    drain(bindings::derive_drop_wrapping_key_impl(mnemonic, version))
 }
 
 #[wasm_bindgen]
@@ -427,7 +408,7 @@ pub fn wrap_drop_key(wrapping_key: &[u8], drop_key: &[u8]) -> Result<Vec<u8>, Js
 
 #[wasm_bindgen]
 pub fn unwrap_drop_key(wrapping_key: &[u8], wrapped: &[u8]) -> Result<Vec<u8>, JsError> {
-    to_js(bindings::unwrap_drop_key_impl(wrapping_key, wrapped))
+    to_js(bindings::unwrap_drop_key_impl(wrapping_key, wrapped).map(drain))
 }
 
 #[wasm_bindgen]
@@ -442,7 +423,7 @@ pub fn validate_bip39_mnemonic(mnemonic: &str) -> bool {
 
 #[wasm_bindgen]
 pub fn derive_will_wrapping_key(mnemonic: &str, version: i32) -> Vec<u8> {
-    bindings::derive_will_wrapping_key_impl(mnemonic, version)
+    drain(bindings::derive_will_wrapping_key_impl(mnemonic, version))
 }
 
 #[wasm_bindgen]
@@ -454,8 +435,8 @@ pub fn derive_will_lookup_key(mnemonic: &str) -> String {
 pub fn derive_recovery_keys(mnemonic: &str, version: i32) -> Result<JsValue, JsError> {
     let (wk, ak) = bindings::derive_recovery_keys_impl(mnemonic, version);
     to_js_val(json_to_js(&serde_json::json!({
-        "wrapping_key": wk,
-        "auth_key": ak,
+        "wrapping_key": drain(wk),
+        "auth_key": drain(ak),
     })))
 }
 
@@ -480,7 +461,7 @@ pub fn parse_envelope(data: &[u8], fallback_id: &str) -> Result<JsValue, JsError
 /// Decrypt an encrypted blob (V0/V1 auto-detection), unpad, and return plaintext.
 #[wasm_bindgen]
 pub fn decrypt_blob(item_key: &[u8], blob_data: &[u8], user_id: &str) -> Result<Vec<u8>, JsError> {
-    to_js(bindings::decrypt_blob_impl(item_key, blob_data, user_id))
+    to_js(bindings::decrypt_blob_impl(item_key, blob_data, user_id).map(drain))
 }
 
 // ---------------------------------------------------------------------------
@@ -492,7 +473,7 @@ pub fn parse_api_key(raw_key: &str) -> Result<JsValue, JsError> {
     let (prefix, secret) = to_js(bindings::parse_api_key_impl(raw_key))?;
     to_js_val(json_to_js(&serde_json::json!({
         "prefix": prefix,
-        "secret": secret,
+        "secret": drain(secret),
     })))
 }
 
@@ -546,12 +527,9 @@ pub fn unwrap_owned_item_key(
     wrapped_key: &[u8],
     nonce: &[u8],
 ) -> Result<Vec<u8>, JsError> {
-    to_js(client_ops::unwrap_owned_item_key_impl(
-        master_key,
-        user_id,
-        wrapped_key,
-        nonce,
-    ))
+    to_js(
+        client_ops::unwrap_owned_item_key_impl(master_key, user_id, wrapped_key, nonce).map(drain),
+    )
 }
 
 /// Prepare a grant: wrap an item key for a recipient.
@@ -597,7 +575,7 @@ pub fn prepare_registration(password: &str) -> Result<JsValue, JsError> {
         "public_key": public_key,
         "encrypted_private_key": encrypted_private_key,
         "client_salt": client_salt,
-        "master_key": master_key,
+        "master_key": drain(master_key),
     })))
 }
 
@@ -607,7 +585,7 @@ pub fn prepare_registration(password: &str) -> Result<JsValue, JsError> {
 pub fn prepare_login(password: &str, client_salt: &[u8]) -> Result<JsValue, JsError> {
     let (master_key, auth_key_hex) = to_js(client_ops::prepare_login_impl(password, client_salt))?;
     to_js_val(json_to_js(&serde_json::json!({
-        "master_key": master_key,
+        "master_key": drain(master_key),
         "auth_key_hex": auth_key_hex,
     })))
 }
@@ -699,7 +677,7 @@ pub fn prepare_password_change(
         "client_salt": salt,
         "encrypted_master_key": enc_mk,
         "encrypted_private_key": enc_pk,
-        "master_key": mk,
+        "master_key": drain(mk),
     })))
 }
 
@@ -712,7 +690,7 @@ pub fn prepare_password_change(
 pub fn prepare_api_key_full(master_key: &[u8]) -> Result<JsValue, JsError> {
     let (secret, prefix, auth_hex, wmk) = to_js(client_ops::prepare_api_key_full_impl(master_key))?;
     to_js_val(json_to_js(&serde_json::json!({
-        "secret": secret,
+        "secret": drain(secret),
         "key_prefix": prefix,
         "auth_key_hex": auth_hex,
         "wrapped_master_key": wmk,
@@ -724,7 +702,7 @@ pub fn prepare_api_key_full(master_key: &[u8]) -> Result<JsValue, JsError> {
 pub fn prepare_api_key_scoped() -> Result<JsValue, JsError> {
     let (secret, prefix, auth_hex, epk, pk) = to_js(client_ops::prepare_api_key_scoped_impl())?;
     to_js_val(json_to_js(&serde_json::json!({
-        "secret": secret,
+        "secret": drain(secret),
         "key_prefix": prefix,
         "auth_key_hex": auth_hex,
         "encrypted_private_key": epk,
@@ -766,10 +744,10 @@ pub fn decrypt_private_key_from_master(
     master_key: &[u8],
     encrypted_private_key: &[u8],
 ) -> Result<Vec<u8>, JsError> {
-    to_js(client_ops::decrypt_private_key_from_master_impl(
-        master_key,
-        encrypted_private_key,
-    ))
+    to_js(
+        client_ops::decrypt_private_key_from_master_impl(master_key, encrypted_private_key)
+            .map(drain),
+    )
 }
 
 /// Wrap a raw 32-byte key under the user's enc subkey.
@@ -851,8 +829,8 @@ pub fn prepare_link_grant(item_key: &[u8], file_key: &[u8]) -> Result<JsValue, J
     to_js_val(json_to_js(&serde_json::json!({
         "wrapped_key": wk,
         "nonce": nonce,
-        "link_secret": ls,
-        "claim_key": ck,
+        "link_secret": drain(ls),
+        "claim_key": drain(ck),
         "claim_ciphertext": cc,
         "claim_token_hash": cth,
         "file_wrapped_key": fwk,
@@ -889,12 +867,10 @@ pub fn unwrap_link_grant_key(
     wrapped_key: &[u8],
     nonce: &[u8],
 ) -> Result<Vec<u8>, JsError> {
-    to_js(client_ops::unwrap_link_grant_key_impl(
-        claim_key,
-        claim_ciphertext,
-        wrapped_key,
-        nonce,
-    ))
+    to_js(
+        client_ops::unwrap_link_grant_key_impl(claim_key, claim_ciphertext, wrapped_key, nonce)
+            .map(drain),
+    )
 }
 
 // ---------------------------------------------------------------------------

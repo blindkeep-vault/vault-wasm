@@ -894,7 +894,7 @@ dependencies = [
 
 [[package]]
 name = "vault-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -919,7 +919,7 @@ dependencies = [
 
 [[package]]
 name = "vault-wasm"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "ed25519-dalek",
@@ -933,6 +933,7 @@ dependencies = [
  "vault-core",
  "wasm-bindgen",
  "x25519-dalek",
+ "zeroize",
 ]
 
 [[package]]
