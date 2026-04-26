@@ -295,17 +295,19 @@ pub fn leaf_hash(
 ) -> Result<Vec<u8>, JsError> {
     let id = uuid::Uuid::parse_str(entry_id)
         .map_err(|e| JsError::new(&format!("entry_id is not a UUID: {e}")))?;
-    if payload_hash.len() != 32 {
-        return Err(JsError::new("payload_hash must be 32 bytes"));
-    }
-    let bh = if blob_hash.is_empty() {
+    let ph: &[u8; 32] = payload_hash
+        .try_into()
+        .map_err(|_| JsError::new("payload_hash must be 32 bytes"))?;
+    let bh: Option<&[u8; 32]> = if blob_hash.is_empty() {
         None
-    } else if blob_hash.len() != 32 {
-        return Err(JsError::new("blob_hash must be 32 bytes (or empty)"));
     } else {
-        Some(blob_hash)
+        Some(
+            blob_hash
+                .try_into()
+                .map_err(|_| JsError::new("blob_hash must be 32 bytes (or empty)"))?,
+        )
     };
-    Ok(vault_core::merkle::leaf_hash(id, payload_hash, bh, timestamp_millis).to_vec())
+    Ok(vault_core::merkle::leaf_hash(id, ph, bh, timestamp_millis).to_vec())
 }
 
 /// Verify a Merkle inclusion proof against a tree root. Pure function — no
