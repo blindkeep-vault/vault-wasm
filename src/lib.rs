@@ -377,9 +377,20 @@ pub fn pad_plaintext(data: &[u8]) -> Vec<u8> {
     bindings::pad_plaintext_impl(data)
 }
 
+/// Lenient unpad — returns the raw input when the length prefix does not
+/// validate. Legacy un-padded item/file blobs still depend on this; see
+/// `doc/UNPAD_AUDIT_REPORT.md` and #129 L-1.
 #[wasm_bindgen]
 pub fn unpad_plaintext(data: &[u8]) -> Vec<u8> {
     bindings::unpad_plaintext_impl(data)
+}
+
+/// Strict unpad — throws when the length prefix does not validate. Only for
+/// call sites that can prove their input is always padded (anonymous drop
+/// blobs). See `doc/UNPAD_AUDIT_REPORT.md`.
+#[wasm_bindgen]
+pub fn unpad_plaintext_strict(data: &[u8]) -> Result<Vec<u8>, JsError> {
+    to_js(bindings::unpad_plaintext_strict_impl(data))
 }
 
 // ---------------------------------------------------------------------------
