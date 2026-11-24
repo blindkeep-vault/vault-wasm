@@ -169,6 +169,26 @@ pub fn unwrap_key_v1(
 }
 
 // ---------------------------------------------------------------------------
+// RSA-OAEP recipient (#297)
+// ---------------------------------------------------------------------------
+
+/// Wrap a 32-byte item key to an RSA-OAEP recipient whose private key lives in
+/// a KMS or HSM. `recipient_spki_der` is the recipient's SubjectPublicKeyInfo
+/// DER (RSA-3072 to RSA-4096). Returns the OAEP ciphertext (SHA-256, MGF1
+/// SHA-256, empty label), one modulus long. Web Crypto `RSA-OAEP` with
+/// `hash: "SHA-256"` produces the same format.
+#[wasm_bindgen]
+pub fn wrap_key_for_recipient_rsa_oaep(
+    item_key: &[u8],
+    recipient_spki_der: &[u8],
+) -> Result<Vec<u8>, JsError> {
+    to_js(bindings::wrap_key_for_recipient_rsa_oaep_impl(
+        item_key,
+        recipient_spki_der,
+    ))
+}
+
+// ---------------------------------------------------------------------------
 // Grant key wrapping
 // ---------------------------------------------------------------------------
 

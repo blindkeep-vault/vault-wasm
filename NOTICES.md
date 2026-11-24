@@ -20,10 +20,12 @@ This file lists the third-party dependencies used by vault-wasm and their licens
 | chacha20 v0.9.1 | Apache-2.0 OR MIT |
 | chrono v0.4.44 | MIT OR Apache-2.0 |
 | cipher v0.4.4 | MIT OR Apache-2.0 |
+| const-oid v0.9.6 | Apache-2.0 OR MIT |
 | cpufeatures v0.2.17 | MIT OR Apache-2.0 |
 | crypto-common v0.1.7 | MIT OR Apache-2.0 |
 | curve25519-dalek-derive v0.1.1 | MIT/Apache-2.0 |
 | curve25519-dalek v4.1.3 | BSD-3-Clause |
+| der v0.7.10 | Apache-2.0 OR MIT |
 | digest v0.10.7 | MIT OR Apache-2.0 |
 | ed25519-dalek v2.2.0 | BSD-3-Clause |
 | ed25519 v2.2.3 | Apache-2.0 OR MIT |
@@ -38,13 +40,20 @@ This file lists the third-party dependencies used by vault-wasm and their licens
 | inout v0.1.4 | MIT OR Apache-2.0 |
 | itoa v1.0.18 | MIT OR Apache-2.0 |
 | js-sys v0.3.94 | MIT OR Apache-2.0 |
+| lazy_static v1.5.1 | MIT OR Apache-2.0 |
 | libc v0.2.184 | MIT OR Apache-2.0 |
+| libm v0.2.16 | MIT |
 | memchr v2.8.0 | Unlicense OR MIT |
+| num-bigint-dig v0.8.6 | MIT/Apache-2.0 |
+| num-integer v0.1.47 | MIT OR Apache-2.0 |
+| num-iter v0.1.46 | MIT OR Apache-2.0 |
 | num-traits v0.2.19 | MIT OR Apache-2.0 |
 | once_cell v1.21.4 | MIT OR Apache-2.0 |
 | opaque-debug v0.3.1 | MIT OR Apache-2.0 |
 | password-hash v0.5.0 | MIT OR Apache-2.0 |
 | pbkdf2 v0.12.2 | MIT OR Apache-2.0 |
+| pkcs1 v0.7.5 | Apache-2.0 OR MIT |
+| pkcs8 v0.10.2 | Apache-2.0 OR MIT |
 | poly1305 v0.8.0 | Apache-2.0 OR MIT |
 | ppv-lite86 v0.2.21 | MIT OR Apache-2.0 |
 | proc-macro2 v1.0.106 | MIT OR Apache-2.0 |
@@ -52,6 +61,7 @@ This file lists the third-party dependencies used by vault-wasm and their licens
 | rand_chacha v0.3.1 | MIT OR Apache-2.0 |
 | rand_core v0.6.4 | MIT OR Apache-2.0 |
 | rand v0.8.5 | MIT OR Apache-2.0 |
+| rsa v0.9.10 | MIT OR Apache-2.0 |
 | rustc_version v0.4.1 | MIT OR Apache-2.0 |
 | rustversion v1.0.22 | MIT OR Apache-2.0 |
 | semver v1.0.28 | MIT OR Apache-2.0 |
@@ -62,6 +72,9 @@ This file lists the third-party dependencies used by vault-wasm and their licens
 | serde-wasm-bindgen v0.6.5 | MIT |
 | sha2 v0.10.9 | MIT OR Apache-2.0 |
 | signature v2.2.0 | Apache-2.0 OR MIT |
+| smallvec v1.16.6 | MIT OR Apache-2.0 |
+| spin v0.9.9 | MIT |
+| spki v0.7.3 | Apache-2.0 OR MIT |
 | subtle v2.6.1 | BSD-3-Clause |
 | syn v2.0.117 | MIT OR Apache-2.0 |
 | thiserror-impl v1.0.69 | MIT OR Apache-2.0 |
